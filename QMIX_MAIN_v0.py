@@ -1,8 +1,8 @@
-from agent_flag_v6 import Environment
-from delay_buffer_v1 import DelayBuffer
+from agent_flag_v5 import Environment
+from delay_buffer_v0 import DelayBuffer
 from qmix_algo import QMixAlgo
 
-from env_utils_v2 import EnvInitData
+from env_utils import EnvInitData
 
 import numpy as np
 
@@ -39,11 +39,10 @@ class Runner_QMix:
         self.seed = args.seed
 
         time_str = time.strftime("%Y-%m-%d-%H.%M.%S", time.localtime())
-        self.model_save_path_base = f"{time_str}-train_episodes-{self.max_episodes}-max_steps-{self.max_steps}-" + \
-                                    f"lr-{self.lr}-env_seed-{self.seed}-" + \
-                                    f"target_update_freq-{self.target_update_freq}-qmix_seed-{self.seed}-" + \
-                                    f"decay_lr-{self.use_lr_decay}"
-        self.show_plot = args.show_plot
+        self.model_save_path_base = f"{time_str}-max_train_steps-{self.max_episodes}-epsilon_min-{self.epsilon_min}-" + \
+                                    f"lr-{self.lr}-" + \
+                                    f"target_update_freq-{self.target_update_freq}-qmix_seed-{self.seed}" + \
+                                    f"-env_seed-{env.seed}-decay_lr-{self.use_lr_decay}"
         self.base_save_path = args.base_save_path
         self.train_info_file = "train_info.txt"
 
@@ -53,7 +52,7 @@ class Runner_QMix:
 
 
         self.args.observation_dim = env.observation_dim
-        self.args.avail_actions_matrix_dim = env.avail_actions_matrix_dim
+        self.args.avail_actions_dim = env.avail_actions_dim
         self.args.state_dim = env.state_dim
         self.args.agent_net_hidden_dim = args.agent_net_hidden_dim
         self.args.qmix_hidden_dim = args.qmix_hidden_dim
@@ -61,6 +60,8 @@ class Runner_QMix:
 
         self.qmix_algo = QMixAlgo(self.args)
         self.replay_buffer = DelayBuffer(self.args)
+
+        self.show_plot = bool(args.show_plot)
 
         # 记录训练信息
         self.evaluate_info = {
@@ -104,11 +105,9 @@ class Runner_QMix:
                 last_state = self.env.get_state()
                 last_observation = self.env.get_observations()
                 avail_actions = self.env.get_avail_actions()
-                avail_actions_matrix = self.env.get_avail_actions_matrix()
 
                 # step
-                actions = self.qmix_algo.choose_action(last_observation, avail_actions,
-                                                       avail_actions_matrix, self.epsilon)
+                actions = self.qmix_algo.choose_action(last_observation, avail_actions, self.epsilon)
                 rewards, dones = self.env.step(actions)
 
                 reward_collection.append(rewards)
@@ -116,7 +115,6 @@ class Runner_QMix:
                 next_state = self.env.get_state()
                 next_observation = self.env.get_observations()
                 next_avail_actions = self.env.get_avail_actions()
-                next_avail_actions_matrix = self.env.get_avail_actions_matrix()
                 terminate = 1 if self.env.is_done() else 0
 
                 # 存储数据
@@ -124,8 +122,7 @@ class Runner_QMix:
                     last_states=last_state, last_observations=last_observation,
                     actions=actions, rewards=rewards, dones=dones,
                     next_states=next_state, next_observations=next_observation,
-                    avail_actions_matrix=avail_actions_matrix,
-                    next_avail_actions_matrix=next_avail_actions_matrix,
+                    avail_actions=avail_actions, next_avail_actions=next_avail_actions,
                     terminate=terminate,
                 )
 
@@ -135,6 +132,8 @@ class Runner_QMix:
                     loss = self.qmix_algo.train(batch_data, self.total_episodes).detach().cpu().numpy()
 
                     loss_collection.append(loss)
+
+
 
                 if self.env.is_done() or step == self.max_steps-1:
                     self.evaluate_info["step_list"].append(step)
@@ -204,19 +203,16 @@ class Runner_QMix:
             last_observations = self.env.get_observations()
             last_states = self.env.get_state()
             avail_actions = self.env.get_avail_actions()
-            avail_actions_matrix = self.env.get_avail_actions_matrix()
-            actions = self.qmix_algo.choose_action(last_observations, avail_actions, avail_actions_matrix, epsilon=0.0)
+            actions = self.qmix_algo.choose_action(last_observations, avail_actions, epsilon=0.0)
             dones, rewards = self.env.step(actions)
             next_avail_actions = self.env.get_avail_actions()
-            next_avail_actions_matrix = self.env.get_avail_actions_matrix()
             next_observations = self.env.get_observations()
             next_states = self.env.get_state()
             terminate = 1 if self.env.is_done() else 0
             self.replay_buffer.store_transition(last_states=last_states, last_observations=last_observations,
                     actions=actions, rewards=rewards, dones=dones,
                     next_states=next_states, next_observations=next_observations,
-                    avail_actions_matrix=avail_actions_matrix,
-                    next_avail_actions_matrix=next_avail_actions_matrix,
+                    avail_actions=avail_actions, next_avail_actions=next_avail_actions,
                     terminate=terminate,)
             # 数据服务器容量数量
             data_content_list.append(self.env.get_server_content())
@@ -280,13 +276,12 @@ class Runner_QMix:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("Hyperparameters setting for QMIX.")
     parser.add_argument("--max_episodes", type=int, default=int(1000), help=" Maximum number of training steps")
-    parser.add_argument("--max_steps", type=int, default=int(8), help=" Maximum number of training steps")
-    parser.add_argument("--evaluate_freq", type=int, default=5, help="Evaluate the policy every 'evaluate_freq' steps")
-    parser.add_argument("--target_update_freq", type=int, default=30, help="Update frequency of the target network")
+    parser.add_argument("--max_steps", type=int, default=int(50), help=" Maximum number of training steps")
+    parser.add_argument("--evaluate_freq", type=int, default=2, help="Evaluate the policy every 'evaluate_freq' steps")
 
     parser.add_argument("--epsilon", type=float, default=1.0, help="Initial epsilon")
-    parser.add_argument("--epsilon_decay_steps", type=float, default=1.0, help="How many steps before the epsilon decays to the minimum")
-    parser.add_argument("--epsilon_min", type=float, default=0.1, help="Minimum epsilon")
+    parser.add_argument("--epsilon_decay_steps", type=float, default=800, help="How many steps before the epsilon decays to the minimum")
+    parser.add_argument("--epsilon_min", type=float, default=0.05, help="Minimum epsilon")
     parser.add_argument("--epsilon_decay_function", type=str, default="default",
                         help="epsilon_decay_function", choices=["default", "function1", "function2", "function3"])
 
@@ -301,6 +296,7 @@ if __name__ == '__main__':
     parser.add_argument("--hyper_hidden_dim", type=int, default=640, help="The dimension of the hidden layer of the hyper-network")
     parser.add_argument("--agent_net_hidden_dim", type=int, default=640, help="The dimension of the hidden layer of the agent network")
 
+    parser.add_argument("--target_update_freq", type=int, default=200, help="Update frequency of the target network")
     parser.add_argument("--seed", type=int, default=44, help="Random seed")
     parser.add_argument("--use_RMS", type=bool, default=False, help="Use RMS")
     parser.add_argument("--show_plot", type=bool, default=False, help="Show plot", choices=[True, False])
@@ -308,18 +304,19 @@ if __name__ == '__main__':
 
     # 环境参数
     parser.add_argument("--env_title", type=str, default="Environment", help="The title of the environment")
-    parser.add_argument("--render_mode", type=str, default="human", choices=["human", "None"], help="Render mode")
+    parser.add_argument("--render_mode", type=str, default="None", choices=["human", "None"], help="Render mode")
     parser.add_argument("--n_phone", type=int, default=1, help="The number of phones")
     parser.add_argument("--n_uav", type=int, default=1, help="The number of uavs")
     parser.add_argument("--n_flag", type=int, default=5, help="The number of flags")
     parser.add_argument("--n_obstacle", type=int, default=2, help="The number of obstacles")
     parser.add_argument("--n_server", type=int, default=1, help="The number of servers")
-    parser.add_argument("--phone_move_radius", type=int, default=1, help="The radius of the movement of the phone")
-    parser.add_argument("--uav_move_radius", type=int, default=2, help="The radius of the movement of the uav")
+    parser.add_argument("--agent_vision_length", type=int, default=3, help="The length of agent vision")
+    parser.add_argument("--padding", type=int, default=4, help="The padding of the agent")
     parser.add_argument("--width", type=int, default=5, help="The width of the agent")
     parser.add_argument("--height", type=int, default=5, help="The height of the agent")
     parser.add_argument("--use_init_position", type=bool, default=False, help="Use initial position")
-    parser.add_argument("--get_urgency_function", type=str, default="function1", choices=["default", "function1"], help="Get urgency function")
+    parser.add_argument("--use_object_one_hot", type=bool, default=True, help="Use object one hot")
+    parser.add_argument("--use_uav_content", type=bool, default=True, help="Use uav content")
 
     parser.add_argument("--base_save_path", type=str, default=".", help="The path of the comparison saved model")
 
@@ -339,11 +336,12 @@ if __name__ == '__main__':
     runer_qmix.run()
 
     end_time = time.time()
-    print("\n-----Training finished!-----\n")
-    print(f"Total time: {end_time - begin_time:.2f}s")
+    print("Training finished!\n")
+    print("Total time: ", end_time - begin_time)
 
     # 保存信息
     with open(os.path.join(runer_qmix.model_save_path, runer_qmix.train_info_file), "a") as f:
+
         f.write(f"训练时间:{end_time-begin_time:.2f}s\n")
         f.close()
 

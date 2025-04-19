@@ -109,8 +109,8 @@ class QMixAlgo:
 
         # 将q_values_eval中的q值,依据所选取的动作取出来对应q值,
         # shape: batch_size * a_agents * avail_actions_shape -> batch_size * a_agents
-        actions = torch.tensor(batch["actions"], dtype=torch.int64).to(self.device)
-        actions_index = [(action[:,0] * self.env.avail_actions_matrix_shape[1] + action[:, 1]).cpu().numpy() for action in actions]
+        actions = batch["actions"]
+        actions_index = [(action[:,0] * self.env.avail_actions_matrix_shape[1] + action[:, 1]).tolist() for action in actions]
         actions_index = torch.tensor(actions_index, dtype=torch.int64).to(self.device)
         q_values_eval = q_values_eval.reshape((-1, self.env.n_worker, self.env.avail_actions_matrix_dim))
         q_values_eval = q_values_eval.gather(dim=-1, index=actions_index.unsqueeze(-1))
@@ -118,7 +118,7 @@ class QMixAlgo:
         pass
         # 将q_values_target中的q值,依据下一步可执行的动作,选取其中最大的q值.
         # shape: batch_size * a_agents * avail_actions_shape -> batch_size * a_agents
-        next_avail_actions_matrix = torch.tensor(batch["next_avail_actions_matrix"], dtype=torch.int64).to(self.device)
+        next_avail_actions_matrix = torch.tensor(batch['next_avail_actions_matrix'], dtype=torch.int64).to(self.device)
         q_values_target[next_avail_actions_matrix == 0] = -np.inf
         q_values_target = q_values_target.reshape((-1, self.env.n_worker, self.env.avail_actions_matrix_dim))
         q_values_target = q_values_target.max(dim=-1, keepdim=True)[0].squeeze()  # shape = batch_size * a_agents

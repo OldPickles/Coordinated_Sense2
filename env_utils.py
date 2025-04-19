@@ -5,43 +5,36 @@ This file contains utility functions for the environment.
 
 class EnvObject:
     flag_content = 1  # 表示旗子的数据内容
-    uav_capacity = 3  # 表示无人机的数据容量
+    uav_capacity = 1  # 表示无人机的数据容量
     # 添加速度属性。
     # 决策间隔时间。
     server_capacity = 100  # 表示服务器的数据容量
 
-    # one-hot编码
-    ont_host_base = [0, 0, 0, 0,]
-    phone_one_hot = [1, 0, 0, 0,]  # 电话的one-hot编码
-    uav_one_hot = [0, 1, 0, 0,]  # 无人机的one-hot编码
-    flag_one_hot = [0, 0, 1, 0,]  # 旗子的one-hot编码
-    server_one_hot = [0, 0, 0, 1,]  # 服务器的one-hot编码
+    ont_host_base = [0, 0, 0, 0, 0]
+    phone_one_hot = [1, 0, 0, 0, 0]  # 电话的one-hot编码
+    uav_one_hot = [0, 1, 0, 0, 0]  # 无人机的one-hot编码
+    flag_one_hot = [0, 0, 1, 0, 0]  # 旗子的one-hot编码
+    obstacle_one_hot = [0, 0, 0, 1, 0]  # 障碍物的one-hot编码
+    server_one_hot = [0, 0, 0, 0, 1]  # 服务器的one-hot编码
 
-    # workers可移动半径[名字为半径，其实其实际意义代表着四方空间的范围]
-    workers_move_radius_dict = {
-        "phone": 2,
-        "uav": 3,
-        "server": 0,
-        "flag": 0,
-    }
-
-    def __init__(self, name=None, position=None):
+    def __init__(self, name=None, position=None, content=0, capacity=0, tk_id=None):
         """
         初始化环境元素对象
         :param name: 元素名称："phone", "uav", "flag", "obstacle", "server"
         :param position: 元素位置
+        :param content: 元素数据内容,只有 flag， uav 和 server 有
+        :param capacity: 元素数据容量,只有 uav 和 server 有
+        :param tk_id: 元素的tkinter id,用于绘制元素
         """
-        self.name = name
         if position is None:
-            raise ValueError("position cannot be None")
+            position = [0, 0]
+        self.name = name
         self.position = position
-        self.content = 0  # content: 元素已收集数据大小,只有 flag， uav 和 server 有
-        self.capacity = 0    # capacity: 元素数据容量,只有 uav 和 server 有
-        self.tk_id = 0  # tk_id: 元素的tkinter id,用于绘制元素，只有human模式下才有
-        self.move_radius = EnvObject.workers_move_radius_dict[name] \
-            if name in EnvObject.workers_move_radius_dict.keys() else 0
+        self.content = content
+        self.capacity = capacity
+        self.tk_id = tk_id
 
-        self.one_hot = EnvObject.ont_host_base
+        self.one_hot = None
         self.init_one_hot()
         self.init_capacity()
         self.init_content()
@@ -57,6 +50,8 @@ class EnvObject:
             self.one_hot = EnvObject.uav_one_hot
         elif self.name == "flag":
             self.one_hot = EnvObject.flag_one_hot
+        elif self.name == "obstacle":
+            self.one_hot = EnvObject.obstacle_one_hot
         elif self.name == "server":
             self.one_hot = EnvObject.server_one_hot
         else:
@@ -84,7 +79,7 @@ class EnvObject:
         :return:
         """
         if self.name == "flag":
-            self.content = EnvObject.flag_content
+            self.content = 1
         else:
             self.content = 0
         pass
@@ -124,14 +119,6 @@ class EnvObject:
         """
         self.capacity = capacity
         pass
-
-    def set_move_radius(self, move_radius):
-        """
-        设置元素的移动半径
-        :param move_radius:
-        :return:
-        """
-        self.move_radius = move_radius
 
     def get_name(self):
         """
@@ -174,13 +161,6 @@ class EnvObject:
         :return:
         """
         return self.one_hot
-
-    def get_move_radius(self):
-        """
-        获取元素的移动半径
-        :return:
-        """
-        return self.move_radius
 
 
 class EnvInitData:
